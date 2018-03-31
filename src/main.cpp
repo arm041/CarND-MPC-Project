@@ -98,8 +98,62 @@ int main() {
           * Both are in between [-1, 1].
           *
           */
-          double steer_value;
-          double throttle_value;
+
+          //Code added by arm041
+          for (int i = 0; i < ptsx.size(); i++)
+          {
+        	  double shift_x = ptsx[i] - px;
+        	  double shift_y = ptsy[i] - py;
+
+        	  ptsx[i] = (shift_x * cos(0-psi) - shift_y * sin(0-psi));
+        	  ptsy[i] = (shift_x * sin(0-psi) + shift_y * cos(0-psi));
+          }
+
+          //code for turning the points into vector maps used from
+          //Udacity Q&A for this project directly
+          double* ptrx = &ptsx[0];
+          double* ptry = &ptsy[0];
+
+          Eigen::Map<Eigen::VectorXd> ptsx_transform(ptrx, 6);
+          Eigen::Map<Eigen::VectorXd> ptsy_transform(ptry, 6);
+
+          auto coeffs = polyfit (ptsx_transform, ptsy_transform, 3);
+          //code above was taken from Udacity Q&A for this project
+
+          //After transformation the cars position is 0 so the polynomial
+          //at point x = 0 shows the difference to reference also called cte
+          double cte = polyeval (coeffs, 0);
+
+          //the error is equal to psi - atan(coeffs[1] + 2 * px * coeffs[2] + 3 * coeffs[3] * pow (px, 2))
+          //but because of the transformation the px value is 0 so the formula becomes only -atan (coeffs[1])
+          double epsi = -atan(coeffs[1]);
+
+
+          Eigen::VectorXd state(6);
+          double steer_value = j[1]["steering_angle"];
+          double throttle_value = j[1]["throttle"];
+          double x_new, y_new, psi_new, v_new;
+
+          x_new = v * cos(-steer_value) * 0.1;
+          y_new = v * sin (-steer_value) * 0.1;
+          psi_new = -v / 2.67 * steer_value * 0.1;
+          v_new = v + throttle_value * 0.1;
+          cte = polyeval (coeffs,x_new) - y_new;
+          epsi = psi_new - atan(coeffs[1] + 2 * x_new * coeffs[2] + 3 * coeffs[3] * pow (x_new, 2));
+
+
+
+          state << x_new, y_new, psi_new, v_new, cte, epsi;
+
+
+          auto vars = mpc.Solve(state, coeffs);
+          //end code added by arm041
+
+
+
+
+          steer_value = -vars[0]/(deg2rad(25) * 2.67);
+          throttle_value = vars[1];
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
@@ -111,6 +165,16 @@ int main() {
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
 
+
+          for (int i = 2; i < vars.size(); i++)
+          {
+        	  if (i % 2 == 0)
+        		  mpc_x_vals.push_back(vars[i]);
+        	  else
+        		  mpc_y_vals.push_back(vars[i]);
+
+          }
+
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
 
@@ -120,6 +184,12 @@ int main() {
           //Display the waypoints/reference line
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+
+          for (int i = 0; i < 25 ; i++)
+          {
+        	  next_x_vals.push_back (2.5 * i);
+        	  next_y_vals.push_back (polyeval(coeffs, 2.5 * i));
+          }
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
